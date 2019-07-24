@@ -8,52 +8,36 @@ import (
 
 	tmtypes "github.com/tendermint/tendermint/types"
 
-	cli "github.com/cosmos/cosmos-sdk/client"
 	"github.com/cosmos/cosmos-sdk/client/context"
 	"github.com/cosmos/cosmos-sdk/codec"
 	"github.com/cosmos/cosmos-sdk/store/state"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 
-	"github.com/cosmos/cosmos-sdk/x/ibc"
 	"github.com/cosmos/cosmos-sdk/x/ibc/02-client"
 	"github.com/cosmos/cosmos-sdk/x/ibc/02-client/tendermint"
 	"github.com/cosmos/cosmos-sdk/x/ibc/23-commitment/merkle"
+	"github.com/cosmos/cosmos-sdk/x/ibc/version"
 )
 
 func components(cdc *codec.Codec, storeKey string, version int64) (path merkle.Path, base state.Base) {
-	prefix := []byte(strconv.FormatInt(version, 10) + "/")
+	prefix := []byte("v" + strconv.FormatInt(version, 10))
 	path = merkle.NewPath([][]byte{[]byte(storeKey)}, prefix)
 	base = state.NewBase(cdc, sdk.NewKVStoreKey(storeKey), prefix)
 	return
 }
 
-func GetQueryCmd(storeKey string, cdc *codec.Codec) *cobra.Command {
-	ibcQueryCmd := &cobra.Command{
-		Use:                        "client",
-		Short:                      "IBC client query subcommands",
-		DisableFlagParsing:         true,
-		SuggestionsMinimumDistance: 2,
-	}
-
-	ibcQueryCmd.AddCommand(cli.GetCommands(
-		GetCmdQueryConsensusState(storeKey, cdc),
-		GetCmdQueryHeader(cdc),
-		GetCmdQueryClient(storeKey, cdc),
-	)...)
-	return ibcQueryCmd
-}
-
 func GetCmdQueryClient(storeKey string, cdc *codec.Codec) *cobra.Command {
 	return &cobra.Command{
-		Use:   "client",
+		Use:   "client [clientid]",
 		Short: "Query stored client",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := context.NewCLIContext().WithCodec(cdc)
-			path, base := components(cdc, storeKey, ibc.Version)
+			path, base := components(cdc, storeKey, version.Version)
 			man := client.NewManager(base)
 			id := args[0]
 
+			fmt.Println(string(man.CLIObject(path, id).ConsensusStateKey))
 			state, _, err := man.CLIObject(path, id).ConsensusState(ctx)
 			if err != nil {
 				return err
@@ -110,6 +94,43 @@ func GetCmdQueryConsensusState(storeKey string, cdc *codec.Codec) *cobra.Command
 	}
 }
 
+func QueryHeader(ctx context.CLIContext) (res tendermint.Header, err error) {
+	node, err := ctx.GetNode()
+	if err != nil {
+		return
+	}
+
+	info, err := node.ABCIInfo()
+	if err != nil {
+		return
+	}
+
+	height := info.Response.LastBlockHeight
+	prevheight := height - 1
+
+	commit, err := node.Commit(&height)
+	if err != nil {
+		return
+	}
+
+	validators, err := node.Validators(&prevheight)
+	if err != nil {
+		return
+	}
+
+	nextvalidators, err := node.Validators(&height)
+	if err != nil {
+		return
+	}
+
+	return tendermint.Header{
+		SignedHeader:     commit.SignedHeader,
+		ValidatorSet:     tmtypes.NewValidatorSet(validators.Validators),
+		NextValidatorSet: tmtypes.NewValidatorSet(nextvalidators.Validators),
+	}, nil
+
+}
+
 func GetCmdQueryHeader(cdc *codec.Codec) *cobra.Command {
 	return &cobra.Command{
 		Use:   "header",
@@ -117,38 +138,9 @@ func GetCmdQueryHeader(cdc *codec.Codec) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := context.NewCLIContext().WithCodec(cdc)
 
-			node, err := ctx.GetNode()
+			header, err := QueryHeader(ctx)
 			if err != nil {
 				return err
-			}
-
-			info, err := node.ABCIInfo()
-			if err != nil {
-				return err
-			}
-
-			height := info.Response.LastBlockHeight
-			prevheight := height - 1
-
-			commit, err := node.Commit(&height)
-			if err != nil {
-				return err
-			}
-
-			validators, err := node.Validators(&prevheight)
-			if err != nil {
-				return err
-			}
-
-			nextvalidators, err := node.Validators(&height)
-			if err != nil {
-				return err
-			}
-
-			header := tendermint.Header{
-				SignedHeader:     commit.SignedHeader,
-				ValidatorSet:     tmtypes.NewValidatorSet(validators.Validators),
-				NextValidatorSet: tmtypes.NewValidatorSet(nextvalidators.Validators),
 			}
 
 			fmt.Printf("%s\n", codec.MustMarshalJSONIndent(cdc, header))
