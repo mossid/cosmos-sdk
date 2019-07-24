@@ -50,6 +50,7 @@ go-mod-cache: go.sum
 go.sum: go.mod
 	@echo "--> Ensure dependencies have not been modified"
 	@go mod verify
+	@go mod tidy
 
 clean:
 	rm -rf snapcraft-local.yaml build/
@@ -88,17 +89,17 @@ test_race:
 
 test_sim_app_nondeterminism:
 	@echo "Running nondeterminism test..."
-	@go test -mod=readonly $(SIMAPP) -run TestAppStateDeterminism -SimulationEnabled=true -v -timeout 10m
+	@go test -mod=readonly $(SIMAPP) -run TestAppStateDeterminism -Enabled=true -v -timeout 10m
 
 test_sim_app_custom_genesis_fast:
 	@echo "Running custom genesis simulation..."
 	@echo "By default, ${HOME}/.gaiad/config/genesis.json will be used."
-	@go test -mod=readonly $(SIMAPP) -run TestFullAppSimulation -SimulationGenesis=${HOME}/.gaiad/config/genesis.json \
-		-SimulationEnabled=true -SimulationNumBlocks=100 -SimulationBlockSize=200 -SimulationCommit=true -SimulationSeed=99 -SimulationPeriod=5 -v -timeout 24h
+	@go test -mod=readonly $(SIMAPP) -run TestFullAppSimulation -Genesis=${HOME}/.gaiad/config/genesis.json \
+		-Enabled=true -NumBlocks=100 -BlockSize=200 -Commit=true -Seed=99 -Period=5 -v -timeout 24h
 
 test_sim_app_fast:
 	@echo "Running quick application simulation. This may take several minutes..."
-	@go test -mod=readonly $(SIMAPP) -run TestFullAppSimulation -SimulationEnabled=true -SimulationNumBlocks=100 -SimulationBlockSize=200 -SimulationCommit=true -SimulationSeed=99 -SimulationPeriod=5 -v -timeout 24h
+	@go test -mod=readonly $(SIMAPP) -run TestFullAppSimulation -Enabled=true -NumBlocks=100 -BlockSize=200 -Commit=true -Seed=99 -Period=5 -v -timeout 24h
 
 test_sim_app_import_export: runsim
 	@echo "Running application import/export simulation. This may take several minutes..."
@@ -120,13 +121,14 @@ test_sim_app_multi_seed: runsim
 test_sim_benchmark_invariants:
 	@echo "Running simulation invariant benchmarks..."
 	@go test -mod=readonly $(SIMAPP) -benchmem -bench=BenchmarkInvariants -run=^$ \
-	-SimulationEnabled=true -SimulationNumBlocks=1000 -SimulationBlockSize=200 \
-	-SimulationCommit=true -SimulationSeed=57 -v -timeout 24h
+	-Enabled=true -NumBlocks=1000 -BlockSize=200 \
+	-Commit=true -Seed=57 -v -timeout 24h
 
 # Don't move it into tools - this will be gone once gaia has moved into the new repo
 runsim: $(BINDIR)/runsim
-$(BINDIR)/runsim: contrib/runsim/main.go contrib/runsim/notification.go
-	go install github.com/cosmos/cosmos-sdk/contrib/runsim
+$(BINDIR)/runsim:
+	go get github.com/cosmos/tools/cmd/runsim/
+	go mod tidy
 
 SIM_NUM_BLOCKS ?= 500
 SIM_BLOCK_SIZE ?= 200
@@ -135,12 +137,12 @@ SIM_COMMIT ?= true
 test_sim_app_benchmark:
 	@echo "Running application benchmark for numBlocks=$(SIM_NUM_BLOCKS), blockSize=$(SIM_BLOCK_SIZE). This may take awhile!"
 	@go test -mod=readonly -benchmem -run=^$$ $(SIMAPP) -bench ^BenchmarkFullAppSimulation$$  \
-		-SimulationEnabled=true -SimulationNumBlocks=$(SIM_NUM_BLOCKS) -SimulationBlockSize=$(SIM_BLOCK_SIZE) -SimulationCommit=$(SIM_COMMIT) -timeout 24h
+		-Enabled=true -NumBlocks=$(SIM_NUM_BLOCKS) -BlockSize=$(SIM_BLOCK_SIZE) -Commit=$(SIM_COMMIT) -timeout 24h
 
 test_sim_app_profile:
 	@echo "Running application benchmark for numBlocks=$(SIM_NUM_BLOCKS), blockSize=$(SIM_BLOCK_SIZE). This may take awhile!"
 	@go test -mod=readonly -benchmem -run=^$$ $(SIMAPP) -bench ^BenchmarkFullAppSimulation$$ \
-		-SimulationEnabled=true -SimulationNumBlocks=$(SIM_NUM_BLOCKS) -SimulationBlockSize=$(SIM_BLOCK_SIZE) -SimulationCommit=$(SIM_COMMIT) -timeout 24h -cpuprofile cpu.out -memprofile mem.out
+		-Enabled=true -NumBlocks=$(SIM_NUM_BLOCKS) -BlockSize=$(SIM_BLOCK_SIZE) -Commit=$(SIM_COMMIT) -timeout 24h -cpuprofile cpu.out -memprofile mem.out
 
 test_cover:
 	@export VERSION=$(VERSION); bash -x tests/test_cover.sh
